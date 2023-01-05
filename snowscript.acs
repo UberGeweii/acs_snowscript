@@ -1,0 +1,186 @@
+#define SNOWTIDBASE			64000
+#define SNOWMAXHEIGHT   	500
+
+// WARNING: This should always be atleast 1.
+#define DEFAULT_SNOWMINSPEED	1
+
+#define DEFAULT_SNOWDRAWDIST	2000	
+#define DEFAULT_SNOWMINDRAWDIST	256
+
+#define DEFAULT_SNOWMINHEIGHT	64
+
+
+#define MAXSNOWVARS 		4
+#define SV_SPAWNSNOW 		0
+#define SV_SNOWFALLSPEED 	1
+#define SV_SNOWDRAWDIST 	2
+#define SV_SNOWMINHEIGHT	3
+int SV_snowVars[MAXSNOWVARS];
+
+// Used to save the old status.
+int SV_snowTempVars[MAXSNOWVARS];
+
+bool SV_SnowInitDone = false;
+
+function bool UpdateClientSnowVar(int varNum, int newValue)
+{
+
+	Client_NamedExecuteAlways(-1, "Snow_UpdateClients", 0, varNum, newValue);
+
+	return true;
+}
+
+//Let's give us the possibility to manually change some of the snow related variables.
+script "Snow_ChangeVars" (int speed, int drdistance, int minheight)
+{
+	delay(1);
+	
+	// Speed
+	if (speed >= DEFAULT_SNOWMINSPEED)
+		SV_snowVars[SV_SNOWFALLSPEED] = speed;
+	else
+		Log(s:"\ca[ERROR] Input for speed: '", d:speed, s:"' too low! Minimum: ", d:DEFAULT_SNOWMINSPEED);
+	
+	// Draw distance
+	if (drdistance >= DEFAULT_SNOWMINDRAWDIST)
+		SV_snowVars[SV_SNOWDRAWDIST] = drdistance;
+	else
+		Log(s:"\ca[ERROR] Input for drdistance: '", d:drdistance, s:"' too low! Minimum: ", d:DEFAULT_SNOWMINDRAWDIST);
+	
+	// Height
+	if (minheight >= DEFAULT_SNOWMINHEIGHT)
+		SV_snowVars[SV_SNOWMINHEIGHT] = minheight;
+	else
+		Log(s:"\ca[ERROR] Input for minheight: '", d:minheight, s:"' too low! Minimum: ", d:DEFAULT_SNOWMINHEIGHT);	
+	
+	Log(s:"Snow variables have been changed, snowspeed: ", 
+		d:SV_snowVars[SV_SNOWFALLSPEED], s:", snowdrawdistance: ",
+		d:SV_snowVars[SV_SNOWDRAWDIST], s:", snowminheight: ", 
+		d:SV_snowVars[SV_SNOWMINHEIGHT], s:".");
+}
+
+// Update clients loop.
+script "Snow_UpdateClientsLoop" open
+{
+	int oldSnowState;
+	
+	Delay(2);
+	
+	// [#] do this differently for next year.
+    if ( getlevelinfo ( LEVELINFO_LEVELNUM ) == 14 )
+        terminate;
+	
+	// Instantiate values.
+	SV_snowVars[SV_SPAWNSNOW] = zd_rand(0,1);
+	SV_snowVars[SV_SNOWFALLSPEED] = zd_rand(8,16);
+	SV_snowVars[SV_SNOWDRAWDIST] = DEFAULT_SNOWDRAWDIST;
+	SV_snowVars[SV_SNOWMINHEIGHT] = DEFAULT_SNOWMINHEIGHT;
+	
+	// These need to be transmitted on first iteration.
+	SV_snowTempVars[SV_SPAWNSNOW] = -1;
+	SV_snowTempVars[SV_SNOWFALLSPEED] = -1;
+	
+	// These have a default value, no need to transmit at first iteration.
+	SV_snowTempVars[SV_SNOWDRAWDIST] = SV_snowVars[SV_SNOWDRAWDIST];
+	SV_snowTempVars[SV_SNOWMINHEIGHT] = SV_snowVars[SV_SNOWMINHEIGHT];
+	
+	SV_SnowInitDone = true;
+	
+	while (true)
+	{
+		if (GetCVar("sv_alwayssnow") > 0)
+		{
+			oldSnowState = SV_snowVars[SV_SPAWNSNOW];
+			SV_snowVars[SV_SPAWNSNOW] = 1;
+		}
+		else
+		{
+			// Restore.
+			SV_snowVars[SV_SPAWNSNOW] = oldSnowState;
+		}	
+		
+		// Cycle through all possible variables.
+		for (int varNum = 0; varNum <= MAXSNOWVARS; varNum++)
+		{
+			if (SV_snowVars[varNum] != SV_snowTempVars[varNum]) 
+			{		
+				UpdateClientSnowVar(varNum, SV_snowVars[varNum]);
+				SV_snowTempVars[varNum] = SV_snowVars[varNum];
+			}
+		}
+		Delay(2);
+	}
+	
+}
+
+//#define MAXSNOWVARS 		3
+#define CS_SPAWNSNOW 		0
+#define CS_SNOWFALLSPEED 	1
+#define CS_SNOWDRAWDIST 	2
+#define CS_SNOWMINHEIGHT	3
+
+int CS_snowVars[MAXSNOWVARS];
+
+// Don't ever puke this script!
+// It gets activated for every client that joins.
+script "Snow_ClientEnter" enter
+{
+	delay(2);
+	
+	int player = PlayerNumber();
+	
+    if ( getlevelinfo ( LEVELINFO_LEVELNUM ) == 14 )
+        terminate;
+	
+	while (!SV_SnowInitDone)
+		Delay(5);
+	
+	Client_NamedExecute(player, "Snow_MainClientLoop", 0, 0, 0, 0);
+}
+
+// Now actually update the clients.
+script "Snow_UpdateClients" (int varNum, int newValue)
+{
+	if (GetCvar("sv_debugmode") > 0)
+		Log(s:"\cd[XMAS DEBUG] Information received from server.. varNum: ", d:varNum, s:" newValue: ", d:newValue);
+	
+	// New value..
+	CS_snowVars[varNum] = newValue;
+
+}
+
+// Let's spawn the snow now.
+script "Snow_MainClientLoop" (void)
+{
+	int x, y, z; 	
+	
+	// Default vars at start.
+	CS_snowVars[SV_SNOWDRAWDIST] = DEFAULT_SNOWDRAWDIST;
+	CS_snowVars[SV_SNOWMINHEIGHT] = DEFAULT_SNOWMINHEIGHT;
+	
+	while(true)
+	{
+		if (CS_snowVars[CS_SPAWNSNOW] > 0)
+		{
+			for(int i = SNOWTIDBASE; i < SNOWTIDBASE + 30; i++)
+			{
+				x = GetActorX(0) + (ZD_rand(-CS_snowVars[CS_SNOWDRAWDIST], CS_snowVars[CS_SNOWDRAWDIST]) << 16);
+				y = GetActorY(0) + (ZD_rand(-CS_snowVars[CS_SNOWDRAWDIST], CS_snowVars[CS_SNOWDRAWDIST]) << 16);
+				z = GetActorZ(0) + (ZD_rand(CS_snowVars[CS_SNOWMINHEIGHT], SNOWMAXHEIGHT) << 16);
+				//print(f:x, s:" ", f:y, s:" ", f:z);
+				Spawn("MapSpot", x, y, z, i, 0);
+				
+					if(CheckActorCeilingTexture(i, "F_SKY1"))
+						Thing_Projectile(i, T_SNOWFLAKE, 0, ZD_rand(0, 5), ZD_rand(-5, -30));
+						
+				Thing_Remove(i);
+			}
+		}
+		
+		// Protection.
+		if (CS_snowVars[CS_SNOWFALLSPEED] < 1)
+			CS_snowVars[CS_SNOWFALLSPEED] = 5;
+		
+		Delay(CS_snowVars[CS_SNOWFALLSPEED]);
+	}
+}
