@@ -66,10 +66,6 @@ script "Snow_UpdateClientsLoop" open
 	
 	Delay(2);
 	
-	// [#] do this differently for next year.
-    if ( getlevelinfo ( LEVELINFO_LEVELNUM ) == 14 )
-        terminate;
-	
 	// Instantiate values.
 	SV_snowVars[SV_SPAWNSNOW] = zd_rand(0,1);
 	SV_snowVars[SV_SNOWFALLSPEED] = zd_rand(8,16);
@@ -128,9 +124,6 @@ script "Snow_ClientEnter" enter
 	delay(2);
 	
 	int player = PlayerNumber();
-	
-    if ( getlevelinfo ( LEVELINFO_LEVELNUM ) == 14 )
-        terminate;
 	
 	while (!SV_SnowInitDone)
 		Delay(5);
